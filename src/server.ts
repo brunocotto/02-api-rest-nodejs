@@ -1,20 +1,13 @@
 import fastify from 'fastify'
-import crypto from 'node:crypto'
-import { knex } from './database'
+import { transactionRoutes } from '../routes/transactions'
 import { env } from './env'
 
 const app = fastify()
 
-app.get('/hello', async () => {
-  const transaction = await knex('transactions')
-    .insert({
-      id: crypto.randomUUID(),
-      title: 'Transação teste',
-      amount: 1000,
-    })
-    .returning('*')
+// ordem dos plugins é a ordem que o fastify executa
 
-  return transaction
+app.register(transactionRoutes, {
+  prefix: 'transactions',
 })
 
 app
