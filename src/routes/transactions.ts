@@ -4,9 +4,13 @@ import crypto, { randomUUID } from 'node:crypto'
 import { knex } from '../database'
 import { checkSessionExists } from '../middlewares/check-session-id-exists'
 
-// Cookies
+// Cookies => formas de manter contexto entre requisições
 
 export async function transactionRoutes(app: FastifyInstance) {
+  app.addHook('preHandler', async (req, res) => {
+    console.log(`[${req.method}] ${req.url}`)
+  })
+
   app.get(
     '/',
     {
@@ -65,44 +69,36 @@ export async function transactionRoutes(app: FastifyInstance) {
     },
   )
 
-  app.post(
-    '/',
-    {
-      preHandler: [checkSessionExists],
-    },
-    async (req, res) => {
-      // { title, amount, type: credit or debit }
+  app.post('/', async (req, res) => {
+    // { title, amount, type: credit or debit }
 
-      const createTransactionBodySchema = z.object({
-        title: z.string(),
-        amount: z.number(),
-        type: z.enum(['credit', 'debit']),
+    const createTransactionBodySchema = z.object({
+      title: z.string(),
+      amount: z.number(),
+      type: z.enum(['credit', 'debit']),
+    })
+
+    const { title, amount, type } = createTransactionBodySchema.parse(req.body)
+
+    let { sessionId } = req.cookies
+
+    if (!sessionId) {
+      sessionId = randomUUID()
+
+      res.cookie('sessionId', sessionId, {
+        path: '/',
+        maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
       })
+    }
 
-      const { title, amount, type } = createTransactionBodySchema.parse(
-        req.body,
-      )
+    await knex('transactions').insert({
+      id: crypto.randomUUID(),
+      title,
+      amount: type === 'credit' ? amount : amount * -1,
+      session_id: sessionId,
+    })
 
-      let sessionId = req.cookies.session_Id
-
-      if (!sessionId) {
-        sessionId = randomUUID()
-
-        res.cookie('sessionId', sessionId, {
-          path: '/',
-          maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
-        })
-      }
-
-      await knex('transactions').insert({
-        id: crypto.randomUUID(),
-        title,
-        amount: type === 'credit' ? amount : amount * -1,
-        session_id: sessionId,
-      })
-
-      // HTTP Codes
-      return res.status(201).send()
-    },
-  )
+    // HTTP Codes
+    return res.status(201).send()
+  })
 }
